@@ -1,0 +1,6 @@
+{
+  "name": "RifaGol — Organizador de Rifa Deportiva",
+  "description": "Calculadora estratégica, control de boletos, generador de plantilla para WhatsApp y sorteo para reunir la inscripción del torneo de la Liga Nacional de Futbol.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

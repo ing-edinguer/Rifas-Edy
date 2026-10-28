@@ -1,0 +1,209 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidTicketId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 4 && id.matches('^[0-9]{1,4}$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOrganizer() {
+      return isSignedIn() &&
+        request.auth.token.email == 'edinguer@gmail.com' &&
+        request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isOrganizer() || (
+        isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Entity Validation Blueprints
+    function isValidRaffleConfigDoc(data) {
+      return data.keys().hasAll([
+        'title', 'description', 'organizerName', 'playerName', 'teamName',
+        'photoUrl', 'coverImageUrl', 'targetNetAmount', 'startNumber', 'endNumber',
+        'ticketCount', 'startAtZero', 'ticketPrice', 'prize1Label', 'prize1Amount',
+        'prize2Label', 'prize2Amount', 'drawDate', 'drawMethod', 'raffleStatus',
+        'bankName', 'accountHolder', 'clabeOrCard', 'organizerPhone', 'contactExtra', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'title', 'description', 'organizerName', 'playerName', 'teamName',
+        'photoUrl', 'coverImageUrl', 'targetNetAmount', 'startNumber', 'endNumber',
+        'ticketCount', 'startAtZero', 'ticketPrice', 'prize1Label', 'prize1Amount',
+        'prize2Label', 'prize2Amount', 'drawDate', 'drawMethod', 'raffleStatus',
+        'bankName', 'accountHolder', 'clabeOrCard', 'organizerPhone', 'contactExtra', 'updatedAt'
+      ]) &&
+      data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+      data.description is string && data.description.size() >= 0 && data.description.size() <= 600 &&
+      data.organizerName is string && data.organizerName.size() >= 0 && data.organizerName.size() <= 100 &&
+      data.playerName is string && data.playerName.size() >= 1 && data.playerName.size() <= 80 &&
+      data.teamName is string && data.teamName.size() >= 1 && data.teamName.size() <= 100 &&
+      data.photoUrl is string && data.photoUrl.size() >= 0 && data.photoUrl.size() <= 150000 &&
+      data.coverImageUrl is string && data.coverImageUrl.size() >= 0 && data.coverImageUrl.size() <= 150000 &&
+      data.targetNetAmount is number && data.targetNetAmount >= 0 && data.targetNetAmount <= 1000000 &&
+      data.startNumber is number && data.startNumber >= 0 && data.startNumber <= 999 &&
+      data.endNumber is number && data.endNumber >= 1 && data.endNumber <= 999 &&
+      data.ticketCount is number && data.ticketCount >= 1 && data.ticketCount <= 500 &&
+      data.startAtZero is bool &&
+      data.ticketPrice is number && data.ticketPrice >= 1 && data.ticketPrice <= 50000 &&
+      data.prize1Label is string && data.prize1Label.size() >= 1 && data.prize1Label.size() <= 80 &&
+      data.prize1Amount is number && data.prize1Amount >= 0 && data.prize1Amount <= 1000000 &&
+      data.prize2Label is string && data.prize2Label.size() >= 0 && data.prize2Label.size() <= 80 &&
+      data.prize2Amount is number && data.prize2Amount >= 0 && data.prize2Amount <= 1000000 &&
+      data.drawDate is string && data.drawDate.size() >= 1 && data.drawDate.size() <= 120 &&
+      data.drawMethod is string && data.drawMethod.size() >= 1 && data.drawMethod.size() <= 150 &&
+      data.raffleStatus is string && data.raffleStatus in ['activa', 'pausada', 'cerrada', 'finalizada'] &&
+      data.bankName is string && data.bankName.size() >= 0 && data.bankName.size() <= 80 &&
+      data.accountHolder is string && data.accountHolder.size() >= 0 && data.accountHolder.size() <= 100 &&
+      data.clabeOrCard is string && data.clabeOrCard.size() >= 0 && data.clabeOrCard.size() <= 60 &&
+      data.organizerPhone is string && data.organizerPhone.size() >= 0 && data.organizerPhone.size() <= 25 &&
+      data.contactExtra is string && data.contactExtra.size() >= 0 && data.contactExtra.size() <= 150 &&
+      data.updatedAt == request.time;
+    }
+
+    function isValidTicketPublicDoc(data, ticketId) {
+      return data.keys().hasAll(['number', 'status', 'buyerPublicName', 'paymentMethod', 'updatedAt']) &&
+      data.keys().hasOnly(['number', 'status', 'buyerPublicName', 'paymentMethod', 'updatedAt']) &&
+      data.number is string && data.number == ticketId &&
+      data.number.size() >= 1 && data.number.size() <= 4 && data.number.matches('^[0-9]{1,4}$') &&
+      data.status is string && data.status in ['available', 'reserved', 'paid'] &&
+      data.buyerPublicName is string && data.buyerPublicName.size() >= 0 && data.buyerPublicName.size() <= 60 &&
+      data.paymentMethod is string && data.paymentMethod in ['transferencia', 'efectivo', 'pendiente'] &&
+      data.updatedAt == request.time;
+    }
+
+    function isValidTicketPrivateDoc(data, ticketId) {
+      return data.keys().hasAll(['number', 'buyerName', 'buyerPhone', 'notes', 'updatedAt']) &&
+      data.keys().hasOnly(['number', 'buyerName', 'buyerPhone', 'notes', 'updatedAt']) &&
+      data.number is string && data.number == ticketId &&
+      data.number.size() >= 1 && data.number.size() <= 4 && data.number.matches('^[0-9]{1,4}$') &&
+      data.buyerName is string && data.buyerName.size() >= 0 && data.buyerName.size() <= 80 &&
+      data.buyerPhone is string && data.buyerPhone.size() >= 0 && data.buyerPhone.size() <= 25 &&
+      data.notes is string && data.notes.size() >= 0 && data.notes.size() <= 200 &&
+      data.updatedAt == request.time;
+    }
+
+    function isValidAdminDoc(data) {
+      return data.keys().hasAll(['email', 'createdAt']) &&
+      data.keys().hasOnly(['email', 'createdAt']) &&
+      data.email is string && data.email.size() >= 3 && data.email.size() <= 120 &&
+      data.createdAt == request.time;
+    }
+
+    // 1. /raffle_config/{configId}
+    match /raffle_config/{configId} {
+      allow get: if isValidId(configId);
+      allow list: if false;
+      allow create: if isAdmin() && isValidId(configId) && isValidRaffleConfigDoc(incoming());
+      allow update: if isAdmin() && isValidId(configId) && isValidRaffleConfigDoc(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'description', 'organizerName', 'playerName', 'teamName',
+          'photoUrl', 'coverImageUrl', 'targetNetAmount', 'startNumber', 'endNumber',
+          'ticketCount', 'startAtZero', 'ticketPrice', 'prize1Label', 'prize1Amount',
+          'prize2Label', 'prize2Amount', 'drawDate', 'drawMethod', 'raffleStatus',
+          'bankName', 'accountHolder', 'clabeOrCard', 'organizerPhone', 'contactExtra', 'updatedAt'
+        ])
+      );
+      allow delete: if isAdmin() && isValidId(configId);
+    }
+
+    // 2. /tickets/{ticketId} (Public grid status without PII)
+    match /tickets/{ticketId} {
+      allow get: if isValidTicketId(ticketId);
+      allow list: if resource.data.status in ['available', 'reserved', 'paid'];
+
+      // Create: Admin can create any valid state; public buyer can create a reservation if paired with private doc
+      allow create: if isValidTicketId(ticketId) && isValidTicketPublicDoc(incoming(), ticketId) && (
+        isAdmin() ||
+        (
+          incoming().status == 'reserved' &&
+          incoming().buyerPublicName.size() >= 1 &&
+          existsAfter(/databases/$(database)/documents/tickets_private/$(ticketId))
+        )
+      );
+
+      // Update: Admin can update any valid state; public buyer can ONLY transition 'available' -> 'reserved'
+      allow update: if isValidTicketId(ticketId) && isValidTicketPublicDoc(incoming(), ticketId) && (
+        (
+          isAdmin() &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'buyerPublicName', 'paymentMethod', 'updatedAt'])
+        ) ||
+        (
+          existing().status == 'available' &&
+          incoming().status == 'reserved' &&
+          incoming().buyerPublicName.size() >= 1 &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'buyerPublicName', 'paymentMethod', 'updatedAt']) &&
+          existsAfter(/databases/$(database)/documents/tickets_private/$(ticketId))
+        )
+      );
+
+      allow delete: if isAdmin() && isValidTicketId(ticketId);
+    }
+
+    // 3. /tickets_private/{ticketId} (Isolated PII - Readable ONLY by Organizer Admin)
+    match /tickets_private/{ticketId} {
+      allow get: if isAdmin() && isValidTicketId(ticketId);
+      allow list: if isOrganizer();
+
+      // Create: Admin or public buyer reserving a previously non-occupied ticket
+      allow create: if isValidTicketId(ticketId) && isValidTicketPrivateDoc(incoming(), ticketId) && (
+        isAdmin() ||
+        (
+          incoming().buyerName.size() >= 1 &&
+          (!exists(/databases/$(database)/documents/tickets/$(ticketId)) ||
+            get(/databases/$(database)/documents/tickets/$(ticketId)).data.status == 'available') &&
+          getAfter(/databases/$(database)/documents/tickets/$(ticketId)).data.status == 'reserved'
+        )
+      );
+
+      // Update: Admin or public buyer reserving a ticket whose public status was 'available'
+      allow update: if isValidTicketId(ticketId) && isValidTicketPrivateDoc(incoming(), ticketId) && (
+        (
+          isAdmin() &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['buyerName', 'buyerPhone', 'notes', 'updatedAt'])
+        ) ||
+        (
+          incoming().buyerName.size() >= 1 &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['buyerName', 'buyerPhone', 'notes', 'updatedAt']) &&
+          get(/databases/$(database)/documents/tickets/$(ticketId)).data.status == 'available' &&
+          getAfter(/databases/$(database)/documents/tickets/$(ticketId)).data.status == 'reserved'
+        )
+      );
+
+      allow delete: if isAdmin() && isValidTicketId(ticketId);
+    }
+
+    // 4. /admins/{adminId}
+    match /admins/{adminId} {
+      allow get: if isAdmin() && isValidId(adminId);
+      allow list: if false;
+      allow create: if isAdmin() && isValidId(adminId) && isValidAdminDoc(incoming());
+      allow update: if isAdmin() && isValidId(adminId) && isValidAdminDoc(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['email']) &&
+        incoming().createdAt == existing().createdAt;
+      allow delete: if isAdmin() && isValidId(adminId);
+    }
+  }
+}

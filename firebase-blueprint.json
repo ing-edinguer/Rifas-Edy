@@ -1,0 +1,111 @@
+{
+  "entities": {
+    "RaffleConfigDoc": {
+      "title": "RaffleConfigDoc",
+      "description": "Public configuration of the soccer tournament raffle.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "description": { "type": "string", "minLength": 0, "maxLength": 600 },
+        "organizerName": { "type": "string", "minLength": 0, "maxLength": 100 },
+        "playerName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "teamName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "photoUrl": { "type": "string", "minLength": 0, "maxLength": 150000 },
+        "coverImageUrl": { "type": "string", "minLength": 0, "maxLength": 150000 },
+        "targetNetAmount": { "type": "number" },
+        "startNumber": { "type": "number" },
+        "endNumber": { "type": "number" },
+        "ticketCount": { "type": "number" },
+        "startAtZero": { "type": "boolean" },
+        "ticketPrice": { "type": "number" },
+        "prize1Label": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "prize1Amount": { "type": "number" },
+        "prize2Label": { "type": "string", "minLength": 0, "maxLength": 80 },
+        "prize2Amount": { "type": "number" },
+        "drawDate": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "drawMethod": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "raffleStatus": { "type": "string", "enum": ["activa", "pausada", "cerrada", "finalizada"] },
+        "bankName": { "type": "string", "minLength": 0, "maxLength": 80 },
+        "accountHolder": { "type": "string", "minLength": 0, "maxLength": 100 },
+        "clabeOrCard": { "type": "string", "minLength": 0, "maxLength": 60 },
+        "organizerPhone": { "type": "string", "minLength": 0, "maxLength": 25 },
+        "contactExtra": { "type": "string", "minLength": 0, "maxLength": 150 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "title",
+        "playerName",
+        "teamName",
+        "targetNetAmount",
+        "ticketCount",
+        "startAtZero",
+        "ticketPrice",
+        "prize1Label",
+        "prize1Amount",
+        "prize2Label",
+        "prize2Amount",
+        "drawDate",
+        "drawMethod",
+        "bankName",
+        "accountHolder",
+        "clabeOrCard",
+        "organizerPhone",
+        "updatedAt"
+      ]
+    },
+    "TicketPublicDoc": {
+      "title": "TicketPublicDoc",
+      "description": "Publicly visible status of a raffle ticket number without PII.",
+      "type": "object",
+      "properties": {
+        "number": { "type": "string", "minLength": 1, "maxLength": 4, "pattern": "^[0-9]{1,4}$" },
+        "status": { "type": "string", "enum": ["available", "reserved", "paid"] },
+        "buyerPublicName": { "type": "string", "minLength": 0, "maxLength": 60 },
+        "paymentMethod": { "type": "string", "enum": ["transferencia", "efectivo", "pendiente"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["number", "status", "buyerPublicName", "paymentMethod", "updatedAt"]
+    },
+    "TicketPrivateDoc": {
+      "title": "TicketPrivateDoc",
+      "description": "Isolated PII contact details for a reserved or paid raffle ticket, readable only by the organizer.",
+      "type": "object",
+      "properties": {
+        "number": { "type": "string", "minLength": 1, "maxLength": 4, "pattern": "^[0-9]{1,4}$" },
+        "buyerName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "buyerPhone": { "type": "string", "minLength": 0, "maxLength": 25 },
+        "notes": { "type": "string", "minLength": 0, "maxLength": 200 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["number", "buyerName", "buyerPhone", "notes", "updatedAt"]
+    },
+    "AdminDoc": {
+      "title": "AdminDoc",
+      "description": "Trusted administrator registry document.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "minLength": 3, "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/raffle_config/{configId}": {
+      "schema": { "$ref": "#/entities/RaffleConfigDoc" },
+      "description": "Main public configuration document for the raffle (configId = 'main')."
+    },
+    "/tickets/{ticketId}": {
+      "schema": { "$ref": "#/entities/TicketPublicDoc" },
+      "description": "Public ticket grid documents keyed by ticket number."
+    },
+    "/tickets_private/{ticketId}": {
+      "schema": { "$ref": "#/entities/TicketPrivateDoc" },
+      "description": "Private buyer contact information keyed by ticket number, isolated from public reads."
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminDoc" },
+      "description": "Trusted admin lookup collection."
+    }
+  }
+}
