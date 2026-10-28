@@ -1,5 +1,12 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import {
+  initializeAuth,
+  inMemoryPersistence,
+  browserPopupRedirectResolver,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+} from 'firebase/auth';
 import {
   getFirestore,
   doc,
@@ -15,9 +22,21 @@ import {
 import firebaseConfig from '../../firebase-applet-config.json';
 import { RaffleConfig, TicketStatus, PaymentMethod, RaffleStatus } from '../types/raffle';
 
+// Clean up any stale cached auth tokens in IndexedDB that could trigger securetoken refresh errors
+try {
+  if (typeof window !== 'undefined' && window.indexedDB) {
+    window.indexedDB.deleteDatabase('firebaseLocalStorageDb');
+  }
+} catch {
+  // ignore
+}
+
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-export const auth = getAuth(app);
+export const auth = initializeAuth(app, {
+  persistence: inMemoryPersistence,
+  popupRedirectResolver: browserPopupRedirectResolver,
+});
 export const googleProvider = new GoogleAuthProvider();
 
 export const ORGANIZER_EMAIL = 'edinguer@gmail.com';
@@ -86,17 +105,32 @@ async function testConnection() {
 }
 testConnection();
 
+let tokenExpiryTimer: ReturnType<typeof setTimeout> | null = null;
+
 export async function signInOrganizer() {
-  return signInWithPopup(auth, googleProvider);
+  const cred = await signInWithPopup(auth, googleProvider, browserPopupRedirectResolver);
+  if (tokenExpiryTimer) {
+    clearTimeout(tokenExpiryTimer);
+  }
+  // Proactively sign out before the 60-minute token expires so Firebase never calls securetoken API
+  tokenExpiryTimer = setTimeout(() => {
+    signOut(auth).catch(() => {});
+  }, 50 * 60 * 1000);
+  return cred.user;
 }
 
 export async function signOutOrganizer() {
+  if (tokenExpiryTimer) {
+    clearTimeout(tokenExpiryTimer);
+    tokenExpiryTimer = null;
+  }
   return signOut(auth);
 }
 
 // Sanitize strings to match firebase-blueprint.json maxLength constraints
 function clampStr(val: string | undefined, max: number, fallback = ''): string {
-  const clean = (val ?? fallback).trim();
+  const raw = (val ?? '').trim();
+  const clean = raw.length > 0 ? raw : fallback;
   return clean.slice(0, max);
 }
 

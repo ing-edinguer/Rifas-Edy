@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   CheckCircle2,
   Copy,
@@ -10,9 +10,10 @@ import {
   Phone,
   Calendar,
   Award,
-  User,
   Lock,
   ArrowDown,
+  Search,
+  Clock,
 } from 'lucide-react';
 import { RaffleConfig, Ticket, PaymentMethod } from '../types/raffle';
 import { reserveTicketsAsBuyer } from '../lib/firebase';
@@ -53,6 +54,7 @@ export function BuyerPublicPortal({
   const [confirmedOrder, setConfirmedOrder] = useState<ConfirmedReservation | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [gridFilter, setGridFilter] = useState<'all' | 'available' | 'taken'>('all');
+  const [verifyTicketInput, setVerifyTicketInput] = useState('');
 
   const availableTickets = tickets.filter((t) => t.status === 'available');
   const totalPrize = config.prizes.reduce((acc, p) => acc + p.amount, 0);
@@ -64,7 +66,19 @@ export function BuyerPublicPortal({
     cerrada: { text: 'Venta de Boletos Cerrada', tone: 'text-amber-300' },
     finalizada: { text: 'Sorteo Finalizado', tone: 'text-amber-300' },
   };
-  const currentStatusMeta = statusLabelMap[config.raffleStatus || 'activa'] || statusLabelMap.activa;
+  const currentStatusMeta =
+    statusLabelMap[config.raffleStatus || 'activa'] || statusLabelMap.activa;
+
+  const verifiedTicket = useMemo(() => {
+    const clean = verifyTicketInput.trim();
+    if (!clean) return null;
+    const padded = clean.padStart(2, '0');
+    return (
+      tickets.find(
+        (t) => t.number === clean || t.number === padded || Number(t.number) === Number(clean)
+      ) || null
+    );
+  }, [verifyTicketInput, tickets]);
 
   const toggleNumber = (num: string, status: string) => {
     if (!isRaffleOpen || status !== 'available') return;
@@ -195,7 +209,7 @@ export function BuyerPublicPortal({
   });
 
   return (
-    <div className="space-y-8 pb-20 lg:pb-8">
+    <div id="premios-rifa" className="space-y-8 pb-20 lg:pb-8">
       {/* 1. Stadium Hero Banner with Original Soccer Artwork */}
       <RaffleCoverBanner coverImageUrl={config.coverImageUrl}>
         <div className="p-6 sm:p-8 lg:p-10">
@@ -249,7 +263,8 @@ export function BuyerPublicPortal({
                   <div className="flex items-center gap-1.5">
                     <Phone className="w-4 h-4 text-amber-400 shrink-0" />
                     <span>
-                      Contacto: <strong className="text-white font-mono">{config.organizerPhone}</strong>
+                      Contacto:{' '}
+                      <strong className="text-white font-mono">{config.organizerPhone}</strong>
                       {config.contactExtra ? ` (${config.contactExtra})` : ''}
                     </span>
                   </div>
@@ -286,13 +301,15 @@ export function BuyerPublicPortal({
                 <div>
                   <div className="text-xs text-emerald-300 font-medium">Precio por Boleto</div>
                   <div className="text-2xl sm:text-3xl font-bold font-mono tabular-nums text-white">
-                    ${config.ticketPrice} <span className="text-sm font-normal text-emerald-300">MXN</span>
+                    ${config.ticketPrice}{' '}
+                    <span className="text-sm font-normal text-emerald-300">MXN</span>
                   </div>
                 </div>
                 <div className="text-right">
                   <div className="text-xs text-emerald-300 font-medium">Boletos Disponibles</div>
                   <div className="text-xl font-bold font-mono tabular-nums text-emerald-400">
-                    {availableTickets.length} <span className="text-xs text-emerald-300">/ {tickets.length}</span>
+                    {availableTickets.length}{' '}
+                    <span className="text-xs text-emerald-300">/ {tickets.length}</span>
                   </div>
                 </div>
               </div>
@@ -401,13 +418,13 @@ export function BuyerPublicPortal({
         <div className="bg-amber-500/15 border border-amber-400/50 rounded-2xl p-5 text-amber-200 flex items-center gap-3">
           <Lock className="w-5 h-5 text-amber-400 shrink-0" />
           <div className="text-sm">
-            <strong>Estado actual de la rifa: {currentStatusMeta.text}.</strong> En este momento no es posible apartar nuevos boletos. Si ya tienes tu boleto apartado, puedes consultar el tablero abajo.
+            <strong>Estado actual de la rifa: {currentStatusMeta.text}.</strong> En este momento no es posible apartar nuevos boletos. Si ya tienes tu boleto apartado, puedes consultar su estado abajo.
           </div>
         </div>
       )}
 
       {/* 3. Main Interactive Board + Buyer Checkout Form */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <div id="tablero-boletos" className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left 8 Cols: Interactive Mobile-Optimized Ticket Grid */}
         <section className="lg:col-span-8 bg-[#05291C] border border-emerald-800/80 rounded-3xl p-5 sm:p-7 space-y-6 shadow-lg">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-emerald-800/70">
@@ -420,10 +437,7 @@ export function BuyerPublicPortal({
               </h2>
               <p className="text-xs sm:text-sm text-emerald-200/80 mt-0.5">
                 Boletos numerados del{' '}
-                <strong className="font-mono text-white">
-                  {tickets[0]?.number || '01'}
-                </strong>{' '}
-                al{' '}
+                <strong className="font-mono text-white">{tickets[0]?.number || '01'}</strong> al{' '}
                 <strong className="font-mono text-white">
                   {tickets[tickets.length - 1]?.number || '50'}
                 </strong>
@@ -737,6 +751,68 @@ export function BuyerPublicPortal({
           )}
         </aside>
       </div>
+
+      {/* 4. Public Ticket Status Verifier for Buyers (No Admin Data Exposed) */}
+      <section
+        id="verificar-boleto"
+        className="bg-[#05291C] border border-emerald-800/80 rounded-3xl p-6 sm:p-8 shadow-lg"
+      >
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+          <div className="lg:col-span-6 space-y-1.5">
+            <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
+              Verificador Público de Boletos
+            </span>
+            <h3 className="text-lg sm:text-xl font-bold text-white">
+              ¿Ya apartaste tu boleto? Consulta su estado aquí
+            </h3>
+            <p className="text-xs sm:text-sm text-emerald-200/80">
+              Escribe tu número de boleto para verificar si ya aparece como apartado o pagado en el tablero oficial.
+            </p>
+          </div>
+
+          <div className="lg:col-span-6 flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-emerald-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                maxLength={4}
+                value={verifyTicketInput}
+                onChange={(e) => setVerifyTicketInput(e.target.value)}
+                placeholder="Ingresa tu número de boleto (ej. 07)..."
+                className="w-full min-h-[48px] pl-10 pr-4 py-2.5 text-sm font-mono bg-[#031B12] text-white placeholder:text-emerald-600 border border-emerald-700 rounded-xl focus:outline-none focus:border-amber-400"
+              />
+            </div>
+
+            {verifiedTicket && (
+              <div className="bg-[#031B12] border border-emerald-700 rounded-xl px-4 py-3 flex items-center justify-between gap-4 shrink-0">
+                <div>
+                  <div className="text-xs text-emerald-300 font-mono">
+                    Boleto #{verifiedTicket.number}
+                  </div>
+                  <div className="text-sm font-bold text-white">
+                    {verifiedTicket.status === 'available'
+                      ? 'Disponible para apartar'
+                      : `Registrado a: ${verifiedTicket.buyerName.split(' ')[0]}`}
+                  </div>
+                </div>
+                <div className="text-xs font-bold">
+                  {verifiedTicket.status === 'paid' ? (
+                    <span className="text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 className="w-4 h-4" /> PAGADO
+                    </span>
+                  ) : verifiedTicket.status === 'reserved' ? (
+                    <span className="text-amber-300 flex items-center gap-1">
+                      <Clock className="w-4 h-4" /> APARTADO
+                    </span>
+                  ) : (
+                    <span className="text-white">LIBRE</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
 
       {/* Mobile Sticky Bottom Checkout Trigger (when numbers are selected on mobile) */}
       {selectedNumbers.length > 0 && (

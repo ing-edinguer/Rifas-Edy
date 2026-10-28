@@ -59,7 +59,7 @@ service cloud.firestore {
       data.description is string && data.description.size() >= 0 && data.description.size() <= 600 &&
       data.organizerName is string && data.organizerName.size() >= 0 && data.organizerName.size() <= 100 &&
       data.playerName is string && data.playerName.size() >= 1 && data.playerName.size() <= 80 &&
-      data.teamName is string && data.teamName.size() >= 1 && data.teamName.size() <= 100 &&
+      data.teamName is string && data.teamName.size() >= 0 && data.teamName.size() <= 100 &&
       data.photoUrl is string && data.photoUrl.size() >= 0 && data.photoUrl.size() <= 150000 &&
       data.coverImageUrl is string && data.coverImageUrl.size() >= 0 && data.coverImageUrl.size() <= 150000 &&
       data.targetNetAmount is number && data.targetNetAmount >= 0 && data.targetNetAmount <= 1000000 &&
@@ -68,12 +68,12 @@ service cloud.firestore {
       data.ticketCount is number && data.ticketCount >= 1 && data.ticketCount <= 500 &&
       data.startAtZero is bool &&
       data.ticketPrice is number && data.ticketPrice >= 1 && data.ticketPrice <= 50000 &&
-      data.prize1Label is string && data.prize1Label.size() >= 1 && data.prize1Label.size() <= 80 &&
+      data.prize1Label is string && data.prize1Label.size() >= 0 && data.prize1Label.size() <= 80 &&
       data.prize1Amount is number && data.prize1Amount >= 0 && data.prize1Amount <= 1000000 &&
       data.prize2Label is string && data.prize2Label.size() >= 0 && data.prize2Label.size() <= 80 &&
       data.prize2Amount is number && data.prize2Amount >= 0 && data.prize2Amount <= 1000000 &&
-      data.drawDate is string && data.drawDate.size() >= 1 && data.drawDate.size() <= 120 &&
-      data.drawMethod is string && data.drawMethod.size() >= 1 && data.drawMethod.size() <= 150 &&
+      data.drawDate is string && data.drawDate.size() >= 0 && data.drawDate.size() <= 120 &&
+      data.drawMethod is string && data.drawMethod.size() >= 0 && data.drawMethod.size() <= 150 &&
       data.raffleStatus is string && data.raffleStatus in ['activa', 'pausada', 'cerrada', 'finalizada'] &&
       data.bankName is string && data.bankName.size() >= 0 && data.bankName.size() <= 80 &&
       data.accountHolder is string && data.accountHolder.size() >= 0 && data.accountHolder.size() <= 100 &&

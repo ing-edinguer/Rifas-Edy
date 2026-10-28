@@ -94,9 +94,13 @@ export default function App() {
     return params.get('vista') === 'comprador';
   }, []);
 
-  const [activeSection, setActiveSection] = useState<
-    'comprador' | 'tablero' | 'estrategia' | 'whatsapp' | 'sorteo'
-  >('comprador');
+  // Admin panel tabs (only accessible when isOrganizerAdmin && viewMode === 'admin')
+  const [adminTab, setAdminTab] = useState<
+    'tablero' | 'estrategia' | 'whatsapp' | 'sorteo'
+  >('tablero');
+
+  // View mode: 'buyer' (public buyer view) or 'admin' (organizer management panel)
+  const [viewMode, setViewMode] = useState<'buyer' | 'admin'>('buyer');
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -105,9 +109,13 @@ export default function App() {
     return Boolean(
       currentUser &&
         currentUser.email &&
+        currentUser.emailVerified &&
         currentUser.email.toLowerCase() === ORGANIZER_EMAIL.toLowerCase()
     );
   }, [currentUser]);
+
+  // Effective admin view is strictly gated by verified organizer authentication
+  const isEffectiveAdminView = isOrganizerAdmin && viewMode === 'admin';
 
   const [config, setConfig] = useState<RaffleConfig>(() => {
     try {
@@ -146,12 +154,30 @@ export default function App() {
   >({});
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (
+        user &&
+        user.email &&
+        user.email.toLowerCase() !== ORGANIZER_EMAIL.toLowerCase()
+      ) {
+        // Unauthorized email attempted to sign in as organizer: immediately sign out and keep in buyer mode
+        await signOutOrganizer();
+        setCurrentUser(null);
+        setViewMode('buyer');
+        setAuthReady(true);
+        return;
+      }
       setCurrentUser(user);
+      if (!user) {
+        setViewMode('buyer');
+      } else if (!isBuyerUrlParam) {
+        // When verified organizer is signed in on the main URL, default to admin view
+        setViewMode('admin');
+      }
       setAuthReady(true);
     });
     return () => unsub();
-  }, []);
+  }, [isBuyerUrlParam]);
 
   // 1. Real-time listener for public /raffle_config/main
   useEffect(() => {
@@ -418,16 +444,36 @@ export default function App() {
     };
   }, [config, tickets]);
 
-  // Save Config to Firestore
+  const handleOrganizerLogin = async () => {
+    try {
+      const user = await signInOrganizer();
+      if (
+        user &&
+        user.email &&
+        user.emailVerified &&
+        user.email.toLowerCase() === ORGANIZER_EMAIL.toLowerCase()
+      ) {
+        setViewMode('admin');
+        setAdminTab('tablero');
+        showToast('¡Bienvenido al Panel de Administrador!');
+      } else {
+        await signOutOrganizer();
+        setViewMode('buyer');
+        showToast(
+          'Acceso restringido: esta cuenta no corresponde al organizador de la rifa.'
+        );
+      }
+    } catch {
+      showToast('No se completó el inicio de sesión de organizador.');
+    }
+  };
+
+  // Save Config to Firestore (Admin Only)
   const handlePublishConfig = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!isOrganizerAdmin) {
-      try {
-        await signInOrganizer();
-      } catch {
-        showToast('Inicia sesión con tu cuenta de Google para publicar los cambios.');
-        return;
-      }
+      showToast('Acceso exclusivo para el administrador de la rifa.');
+      return;
     }
     setIsSavingConfig(true);
     try {
@@ -687,108 +733,133 @@ ${buyerShareUrl}
         <div className="max-w-[1360px] mx-auto flex items-center justify-between gap-8">
           {/* Zone 1: Single text element wordmark */}
           <a
-            href="#comprador"
+            href="#inicio"
             onClick={(e) => {
               e.preventDefault();
-              setActiveSection('comprador');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
             className="text-lg font-bold tracking-tight text-white whitespace-nowrap shrink-0"
           >
-            RifaGol Liga Nacional
+            {isEffectiveAdminView ? 'RifaGol · Panel Admin' : 'RifaGol Liga Nacional'}
           </a>
 
-          {/* Zone 2: 5 concise single-line text navigation links */}
-          <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-emerald-200">
-            <a
-              href="#comprador"
-              onClick={(e) => {
-                e.preventDefault();
-                setActiveSection('comprador');
-              }}
-              className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 border-b-2 ${
-                activeSection === 'comprador'
-                  ? 'border-amber-400 text-amber-300 font-bold'
-                  : 'border-transparent'
-              }`}
-            >
-              Elegir Boletos
-            </a>
-            <a
-              href="#tablero"
-              onClick={(e) => {
-                e.preventDefault();
-                setActiveSection('tablero');
-              }}
-              className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 border-b-2 ${
-                activeSection === 'tablero'
-                  ? 'border-amber-400 text-amber-300 font-bold'
-                  : 'border-transparent'
-              }`}
-            >
-              Control de Ventas
-            </a>
-            <a
-              href="#estrategia"
-              onClick={(e) => {
-                e.preventDefault();
-                setActiveSection('estrategia');
-              }}
-              className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 border-b-2 ${
-                activeSection === 'estrategia'
-                  ? 'border-amber-400 text-amber-300 font-bold'
-                  : 'border-transparent'
-              }`}
-            >
-              Configurar Rifa
-            </a>
-            <a
-              href="#whatsapp"
-              onClick={(e) => {
-                e.preventDefault();
-                setActiveSection('whatsapp');
-              }}
-              className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 border-b-2 ${
-                activeSection === 'whatsapp'
-                  ? 'border-amber-400 text-amber-300 font-bold'
-                  : 'border-transparent'
-              }`}
-            >
-              Compartir
-            </a>
-            <a
-              href="#sorteo"
-              onClick={(e) => {
-                e.preventDefault();
-                setActiveSection('sorteo');
-              }}
-              className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 border-b-2 ${
-                activeSection === 'sorteo'
-                  ? 'border-amber-400 text-amber-300 font-bold'
-                  : 'border-transparent'
-              }`}
-            >
-              Sorteo
-            </a>
-          </nav>
+          {/* Zone 2: Strict Role-Separated Navigation Links */}
+          {isEffectiveAdminView ? (
+            <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-emerald-200">
+              <a
+                href="#tablero"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setAdminTab('tablero');
+                }}
+                className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 border-b-2 ${
+                  adminTab === 'tablero'
+                    ? 'border-amber-400 text-amber-300 font-bold'
+                    : 'border-transparent'
+                }`}
+              >
+                Control de Ventas
+              </a>
+              <a
+                href="#estrategia"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setAdminTab('estrategia');
+                }}
+                className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 border-b-2 ${
+                  adminTab === 'estrategia'
+                    ? 'border-amber-400 text-amber-300 font-bold'
+                    : 'border-transparent'
+                }`}
+              >
+                Configurar Rifa
+              </a>
+              <a
+                href="#whatsapp"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setAdminTab('whatsapp');
+                }}
+                className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 border-b-2 ${
+                  adminTab === 'whatsapp'
+                    ? 'border-amber-400 text-amber-300 font-bold'
+                    : 'border-transparent'
+                }`}
+              >
+                Compartir
+              </a>
+              <a
+                href="#sorteo"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setAdminTab('sorteo');
+                }}
+                className={`hover:text-white transition-colors whitespace-nowrap shrink-0 py-1 border-b-2 ${
+                  adminTab === 'sorteo'
+                    ? 'border-amber-400 text-amber-300 font-bold'
+                    : 'border-transparent'
+                }`}
+              >
+                Sorteo
+              </a>
+            </nav>
+          ) : (
+            <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-emerald-200">
+              <a
+                href="#premios-rifa"
+                className="hover:text-amber-300 transition-colors whitespace-nowrap shrink-0 py-1"
+              >
+                Premios e Info
+              </a>
+              <a
+                href="#tablero-boletos"
+                className="hover:text-amber-300 transition-colors whitespace-nowrap shrink-0 py-1"
+              >
+                Tablero de Boletos
+              </a>
+              <a
+                href="#buyer-checkout-form"
+                className="hover:text-amber-300 transition-colors whitespace-nowrap shrink-0 py-1"
+              >
+                Apartar Boleto
+              </a>
+              <a
+                href="#verificar-boleto"
+                className="hover:text-amber-300 transition-colors whitespace-nowrap shrink-0 py-1"
+              >
+                Verificar Boleto
+              </a>
+            </nav>
+          )}
 
           {/* Zone 3: 1 primary action */}
           <div className="flex items-center gap-3 shrink-0">
-            <button
-              onClick={() => copyToClipboard(buyerShareUrl, 'header-share-link')}
-              className="min-h-[42px] inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-950 bg-amber-400 rounded-xl hover:bg-amber-300 transition-all active:scale-[0.98] whitespace-nowrap shrink-0 cursor-pointer shadow-sm"
-            >
-              {copiedId === 'header-share-link' ? (
-                <>
-                  <Check className="w-4 h-4" />
-                  ¡Enlace Copiado!
-                </>
-              ) : (
-                <>
-                  <LinkIcon className="w-4 h-4" />
-                  Copiar Link de Rifa
-                </>
-              )}
-            </button>
+            {isEffectiveAdminView ? (
+              <button
+                onClick={() => setViewMode('buyer')}
+                className="min-h-[42px] inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-950 bg-amber-400 rounded-xl hover:bg-amber-300 transition-all active:scale-[0.98] whitespace-nowrap shrink-0 cursor-pointer shadow-sm"
+              >
+                <TicketIcon className="w-4 h-4" />
+                Ver Vista de Comprador
+              </button>
+            ) : (
+              <button
+                onClick={() => copyToClipboard(buyerShareUrl, 'header-share-link')}
+                className="min-h-[42px] inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-950 bg-amber-400 rounded-xl hover:bg-amber-300 transition-all active:scale-[0.98] whitespace-nowrap shrink-0 cursor-pointer shadow-sm"
+              >
+                {copiedId === 'header-share-link' ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    ¡Enlace Copiado!
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-4 h-4" />
+                    Compartir Rifa
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -802,34 +873,46 @@ ${buyerShareUrl}
       )}
 
       {/* Main Content Container */}
-      <main className="flex-1 max-w-[1360px] w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-8 pb-24 md:pb-12">
+      <main
+        className={`flex-1 max-w-[1360px] w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-8 ${
+          isEffectiveAdminView ? 'pb-24 md:pb-12' : 'pb-12'
+        }`}
+      >
         {/* =========================================================
-            SECTION 0: VISTA PÚBLICA DE COMPRADORES (BOLETOS)
+            VISTA DE COMPRADOR (PÚBLICA — SIN PESTAÑAS DE ADMIN)
            ========================================================= */}
-        {activeSection === 'comprador' && (
+        {!isEffectiveAdminView && (
           <div className="space-y-6">
-            {(!isBuyerUrlParam || isOrganizerAdmin) && (
-              <div className="bg-[#05291C] border border-emerald-700/70 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            {/* Exclusive Floating Bar ONLY visible to the verified Organizer Admin when previewing Buyer View */}
+            {isOrganizerAdmin && (
+              <div className="bg-[#05291C] border-2 border-amber-400/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
                 <div className="space-y-0.5">
-                  <div className="text-xs font-bold text-amber-400">
-                    Modo Vista de Comprador · Lista para Celulares
+                  <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4" />
+                    Previsualización de Vista de Comprador (Solo tú ves este aviso como Administrador)
                   </div>
                   <p className="text-xs text-emerald-100/90">
-                    Aquí tus compradores eligen directamente sus boletos e ingresan su nombre y WhatsApp.
+                    Tus compradores ven únicamente el portal de boletos sin acceso a Control de Ventas, Configurar Rifa ni Sorteo.
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2.5 shrink-0">
                   <button
-                    onClick={() => setActiveSection('estrategia')}
-                    className="min-h-[42px] px-4 py-2 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer whitespace-nowrap"
+                    onClick={() => {
+                      setViewMode('admin');
+                      setAdminTab('tablero');
+                    }}
+                    className="min-h-[42px] px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold rounded-xl transition-colors cursor-pointer whitespace-nowrap"
                   >
-                    Personalizar Datos de la Rifa
+                    Abrir Panel de Administrador ({metrics.paidCount + metrics.reservedCount} vendidos)
                   </button>
                   <button
-                    onClick={() => setActiveSection('tablero')}
-                    className="min-h-[42px] px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold rounded-xl transition-colors cursor-pointer whitespace-nowrap"
+                    onClick={() => {
+                      setViewMode('admin');
+                      setAdminTab('estrategia');
+                    }}
+                    className="min-h-[42px] px-4 py-2 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl transition-colors cursor-pointer whitespace-nowrap"
                   >
-                    Ver Boletos Vendidos ({metrics.paidCount + metrics.reservedCount})
+                    Configurar Rifa
                   </button>
                 </div>
               </div>
@@ -845,8 +928,8 @@ ${buyerShareUrl}
           </div>
         )}
 
-        {/* Organizer Header Telemetry Strip (for Admin tabs) */}
-        {activeSection !== 'comprador' && (
+        {/* Organizer Header Telemetry Strip (Strictly for Verified Admin in Admin View) */}
+        {isEffectiveAdminView && (
           <section className="bg-[#05291C] border border-emerald-700/80 rounded-3xl p-6 shadow-lg">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 pb-6 border-b border-emerald-800/80">
               <div className="flex items-center gap-4">
@@ -857,7 +940,7 @@ ${buyerShareUrl}
                 />
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2 text-xs text-emerald-300 font-medium">
-                    <span>Panel del Administrador</span>
+                    <span>Panel Exclusivo del Administrador</span>
                     <span aria-hidden="true">·</span>
                     <span>Organiza: {config.organizerName || 'Familia'}</span>
                     <span aria-hidden="true">·</span>
@@ -872,26 +955,27 @@ ${buyerShareUrl}
               </div>
 
               <div className="flex flex-wrap items-center gap-2.5 self-start lg:self-center shrink-0">
-                {isOrganizerAdmin ? (
-                  <div className="flex items-center gap-2 px-3.5 py-2 bg-[#031B12] border border-emerald-700 rounded-xl text-xs text-emerald-200">
-                    <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span>Admin: {currentUser?.email}</span>
-                    <button
-                      onClick={() => signOutOrganizer()}
-                      className="ml-2 text-amber-300 hover:text-amber-200 underline cursor-pointer"
-                    >
-                      Salir
-                    </button>
-                  </div>
-                ) : (
+                <button
+                  onClick={() => copyToClipboard(buyerShareUrl, 'admin-bar-share')}
+                  className="min-h-[40px] inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                >
+                  <LinkIcon className="w-3.5 h-3.5 text-amber-400" />
+                  {copiedId === 'admin-bar-share' ? '¡Link Copiado!' : 'Copiar Link Compradores'}
+                </button>
+                <div className="flex items-center gap-2 px-3.5 py-2 bg-[#031B12] border border-emerald-700 rounded-xl text-xs text-emerald-200">
+                  <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Admin: {currentUser?.email}</span>
                   <button
-                    onClick={() => signInOrganizer()}
-                    className="min-h-[44px] inline-flex items-center gap-2 px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold rounded-xl transition-colors cursor-pointer whitespace-nowrap"
+                    onClick={async () => {
+                      await signOutOrganizer();
+                      setViewMode('buyer');
+                      showToast('Sesión de administrador cerrada. Ahora estás en Vista de Comprador.');
+                    }}
+                    className="ml-2 text-amber-300 hover:text-amber-200 underline cursor-pointer font-semibold"
                   >
-                    <LogIn className="w-4 h-4" />
-                    Iniciar Sesión de Administrador
+                    Cerrar Sesión
                   </button>
-                )}
+                </div>
               </div>
             </div>
 
@@ -971,7 +1055,7 @@ ${buyerShareUrl}
         {/* =========================================================
             SECTION 1: CONFIGURACIÓN COMPLETA DEL ADMINISTRADOR
            ========================================================= */}
-        {activeSection === 'estrategia' && (
+        {isEffectiveAdminView && adminTab === 'estrategia' && (
           <div className="space-y-8">
             {/* Full Administrator Configuration Form with all 12 requested fields */}
             <form
@@ -990,13 +1074,43 @@ ${buyerShareUrl}
                     Define aquí todos los parámetros de tu rifa. Al presionar el botón dorado se actualizará en tiempo real para todos los compradores.
                   </p>
                 </div>
-                <button
-                  type="submit"
-                  disabled={isSavingConfig}
-                  className="min-h-[48px] px-6 py-3 bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs sm:text-sm font-bold rounded-xl transition-all active:scale-[0.98] cursor-pointer whitespace-nowrap shrink-0 shadow-md"
-                >
-                  {isSavingConfig ? 'Publicando Cambios...' : 'Guardar y Publicar en Vivo'}
-                </button>
+                <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const restored: RaffleConfig = {
+                        ...config,
+                        startNumber: 1,
+                        endNumber: 50,
+                        ticketCount: 50,
+                        startAtZero: false,
+                        ticketPrice: 60,
+                        prizes: [
+                          { id: '1', label: '1er Lugar (Efectivo)', amount: 1000 },
+                          { id: '2', label: '2do Lugar (Efectivo)', amount: 200 },
+                        ],
+                        raffleStatus: 'activa',
+                      };
+                      setConfig(restored);
+                      if (isOrganizerAdmin) {
+                        await saveRaffleConfigToFirestore(restored);
+                        showToast('¡Fórmula de 50 boletos ($60) y estado Activo restaurados en vivo!');
+                      } else {
+                        showToast('Valores restaurados (50 boletos de $60 · Rifa Activa). Presiona Guardar y Publicar.');
+                      }
+                    }}
+                    className="min-h-[48px] px-4 py-3 bg-emerald-800 hover:bg-emerald-700 text-emerald-100 text-xs font-semibold rounded-xl transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    Restaurar Valores Recomendados
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingConfig}
+                    className="min-h-[48px] px-6 py-3 bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs sm:text-sm font-bold rounded-xl transition-all active:scale-[0.98] cursor-pointer whitespace-nowrap shadow-md"
+                  >
+                    {isSavingConfig ? 'Publicando Cambios...' : 'Guardar y Publicar en Vivo'}
+                  </button>
+                </div>
               </div>
 
               {/* Group 1: Identidad, Causa, Organizador y Estado */}
@@ -1573,23 +1687,9 @@ ${buyerShareUrl}
         {/* =========================================================
             SECTION 2: CONTROL DE VENTAS Y COMPRADORES (ADMIN)
            ========================================================= */}
-        {activeSection === 'tablero' && (
+        {isEffectiveAdminView && adminTab === 'tablero' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             <div className="lg:col-span-8 space-y-6">
-              {!isOrganizerAdmin && (
-                <div className="bg-amber-400/15 border border-amber-400/50 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="text-xs text-amber-100">
-                    <strong>Modo Administrador:</strong> Inicia sesión con tu cuenta de Google (
-                    <strong>{ORGANIZER_EMAIL}</strong>) para ver los teléfonos privados de los compradores y confirmar pagos.
-                  </div>
-                  <button
-                    onClick={() => signInOrganizer()}
-                    className="min-h-[42px] px-4 py-2 bg-amber-400 text-slate-950 text-xs font-bold rounded-xl cursor-pointer shrink-0 whitespace-nowrap"
-                  >
-                    Iniciar Sesión
-                  </button>
-                </div>
-              )}
 
               <div className="bg-[#05291C] border border-emerald-800 rounded-3xl p-6 space-y-5 shadow-lg">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-emerald-800/80">
@@ -1925,7 +2025,7 @@ ${buyerShareUrl}
         {/* =========================================================
             SECTION 3: COMPARTIR EN WHATSAPP Y DESCARGAR PLANTILLA
            ========================================================= */}
-        {activeSection === 'whatsapp' && (
+        {isEffectiveAdminView && adminTab === 'whatsapp' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             <div className="lg:col-span-7 space-y-6">
               <div className="bg-[#05291C] border-2 border-amber-400/60 rounded-3xl p-6 space-y-4 shadow-lg">
@@ -2034,9 +2134,9 @@ ${buyerShareUrl}
         )}
 
         {/* =========================================================
-            SECTION 4: SORTEO OFICIAL Y VERIFICADOR
+            SECTION 4: SORTEO OFICIAL Y VERIFICADOR (ADMIN)
            ========================================================= */}
-        {activeSection === 'sorteo' && (
+        {isEffectiveAdminView && adminTab === 'sorteo' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
             <section className="bg-[#05291C] border border-emerald-800 rounded-3xl p-6 space-y-5 shadow-lg">
               <div className="flex items-center justify-between">
@@ -2163,74 +2263,82 @@ ${buyerShareUrl}
         )}
       </main>
 
-      {/* Mobile Fixed Bottom Navigation Bar (5 Tabs for One-Handed Phone Use) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-[#02140E]/95 backdrop-blur-md border-t border-emerald-800/80 grid grid-cols-5 items-center h-16 px-1">
-        <button
-          onClick={() => setActiveSection('comprador')}
-          className={`flex flex-col items-center justify-center h-full cursor-pointer ${
-            activeSection === 'comprador' ? 'text-amber-400 font-bold' : 'text-emerald-300/80'
-          }`}
-        >
-          <TicketIcon className="w-5 h-5" />
-          <span className="text-[10px] mt-1">Boletos</span>
-        </button>
-        <button
-          onClick={() => setActiveSection('tablero')}
-          className={`flex flex-col items-center justify-center h-full cursor-pointer ${
-            activeSection === 'tablero' ? 'text-amber-400 font-bold' : 'text-emerald-300/80'
-          }`}
-        >
-          <LayoutGrid className="w-5 h-5" />
-          <span className="text-[10px] mt-1">Ventas</span>
-        </button>
-        <button
-          onClick={() => setActiveSection('estrategia')}
-          className={`flex flex-col items-center justify-center h-full cursor-pointer ${
-            activeSection === 'estrategia' ? 'text-amber-400 font-bold' : 'text-emerald-300/80'
-          }`}
-        >
-          <Sliders className="w-5 h-5" />
-          <span className="text-[10px] mt-1">Configurar</span>
-        </button>
-        <button
-          onClick={() => setActiveSection('whatsapp')}
-          className={`flex flex-col items-center justify-center h-full cursor-pointer ${
-            activeSection === 'whatsapp' ? 'text-amber-400 font-bold' : 'text-emerald-300/80'
-          }`}
-        >
-          <Share2 className="w-5 h-5" />
-          <span className="text-[10px] mt-1">Compartir</span>
-        </button>
-        <button
-          onClick={() => setActiveSection('sorteo')}
-          className={`flex flex-col items-center justify-center h-full cursor-pointer ${
-            activeSection === 'sorteo' ? 'text-amber-400 font-bold' : 'text-emerald-300/80'
-          }`}
-        >
-          <Trophy className="w-5 h-5" />
-          <span className="text-[10px] mt-1">Sorteo</span>
-        </button>
-      </nav>
+      {/* Mobile Fixed Bottom Navigation Bar — EXCLUSIVELY FOR VERIFIED ADMIN IN ADMIN MODE */}
+      {isEffectiveAdminView && (
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-[#02140E]/95 backdrop-blur-md border-t border-emerald-800/80 grid grid-cols-5 items-center h-16 px-1">
+          <button
+            onClick={() => setAdminTab('tablero')}
+            className={`flex flex-col items-center justify-center h-full cursor-pointer ${
+              adminTab === 'tablero' ? 'text-amber-400 font-bold' : 'text-emerald-300/80'
+            }`}
+          >
+            <LayoutGrid className="w-5 h-5" />
+            <span className="text-[10px] mt-1">Ventas</span>
+          </button>
+          <button
+            onClick={() => setAdminTab('estrategia')}
+            className={`flex flex-col items-center justify-center h-full cursor-pointer ${
+              adminTab === 'estrategia' ? 'text-amber-400 font-bold' : 'text-emerald-300/80'
+            }`}
+          >
+            <Sliders className="w-5 h-5" />
+            <span className="text-[10px] mt-1">Configurar</span>
+          </button>
+          <button
+            onClick={() => setAdminTab('whatsapp')}
+            className={`flex flex-col items-center justify-center h-full cursor-pointer ${
+              adminTab === 'whatsapp' ? 'text-amber-400 font-bold' : 'text-emerald-300/80'
+            }`}
+          >
+            <Share2 className="w-5 h-5" />
+            <span className="text-[10px] mt-1">Compartir</span>
+          </button>
+          <button
+            onClick={() => setAdminTab('sorteo')}
+            className={`flex flex-col items-center justify-center h-full cursor-pointer ${
+              adminTab === 'sorteo' ? 'text-amber-400 font-bold' : 'text-emerald-300/80'
+            }`}
+          >
+            <Trophy className="w-5 h-5" />
+            <span className="text-[10px] mt-1">Sorteo</span>
+          </button>
+          <button
+            onClick={() => setViewMode('buyer')}
+            className="flex flex-col items-center justify-center h-full cursor-pointer text-emerald-300/80 hover:text-amber-400"
+          >
+            <TicketIcon className="w-5 h-5" />
+            <span className="text-[10px] mt-1">Ver Rifa</span>
+          </button>
+        </nav>
+      )}
 
-      {/* Quiet Desktop Footer */}
-      <footer className="hidden md:block border-t border-emerald-900/80 bg-[#02140E] py-5 px-6 mt-12">
-        <div className="max-w-[1360px] mx-auto flex items-center justify-between gap-4 text-xs text-emerald-300/80">
-          <span>
-            RifaGol Liga Nacional · Plataforma deportiva sincronizada en tiempo real.
-          </span>
-          <div className="flex items-center gap-5">
-            <button
-              onClick={() => setActiveSection('comprador')}
-              className="text-emerald-200 hover:text-amber-300 font-semibold cursor-pointer"
-            >
-              Vista de Comprador
-            </button>
-            <button
-              onClick={() => setActiveSection('estrategia')}
-              className="text-emerald-200 hover:text-amber-300 font-semibold cursor-pointer"
-            >
-              Configurar Rifa
-            </button>
+      {/* Footer with Discreet Organizer Access */}
+      <footer className="border-t border-emerald-900/80 bg-[#02140E] py-6 px-4 sm:px-6 mt-12">
+        <div className="max-w-[1360px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-emerald-300/80">
+          <div className="text-center sm:text-left">
+            <span className="font-semibold text-white">{config.title}</span> · Organiza:{' '}
+            {config.organizerName || config.accountHolder} · Sorteo: {config.drawDate}
+          </div>
+          <div className="flex items-center gap-4">
+            {isOrganizerAdmin ? (
+              <button
+                onClick={() => setViewMode(viewMode === 'admin' ? 'buyer' : 'admin')}
+                className="inline-flex items-center gap-1.5 text-amber-300 hover:text-amber-200 font-bold cursor-pointer"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                {viewMode === 'admin'
+                  ? 'Cambiar a Vista de Comprador'
+                  : 'Abrir Panel de Administrador'}
+              </button>
+            ) : (
+              <button
+                onClick={handleOrganizerLogin}
+                className="inline-flex items-center gap-1.5 text-emerald-400/70 hover:text-amber-300 font-medium cursor-pointer transition-colors"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                Acceso Organizador
+              </button>
+            )}
           </div>
         </div>
       </footer>
